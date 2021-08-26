@@ -4,6 +4,7 @@
 -- Desc: This file demonstrates how to use Functions
 -- Change Log: When,Who,What
 -- 2021-08-21,RobertBoyd,Created File
+-- 2021-08-25,RobertBoyd,Final Adjustments
 --**************************************************************************--
 Begin Try
 	Use Master;
@@ -243,7 +244,7 @@ SELECT C.CategoryName, P.ProductName, FORMAT(P.UnitPrice, 'C', 'en-US') AS UnitP
   FROM vCategories AS C
   INNER JOIN vProducts AS P ON
   C.CategoryID = P.CategoryID
-  ORDER BY C.CategoryName, P.ProductName;
+  ORDER BY C.CategoryName, P.ProductName, P.UnitPrice;
 GO
 
 -- Question 3 (10% of pts): What built-in SQL Server function can you use to show a list 
@@ -286,7 +287,7 @@ SELECT P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.Inv
   P.ProductID = I.ProductID
   ORDER BY P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.InventoryDate))), I.Count;
 GO
-*/
+
 
 --Below is the final product with the column name adjusted to match that of the output
 SELECT P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.InventoryDate))) AS InventoryDate, I.Count AS InventoryCount
@@ -294,6 +295,15 @@ SELECT P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.Inv
   INNER JOIN vInventories AS I ON
   P.ProductID = I.ProductID
   ORDER BY P.ProductName, I.InventoryDate, I.Count;
+GO
+*/
+
+--But here is another version in which you can use DATENAME to extract year and do a cast to avoid the date issue
+SELECT P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + DATENAME(yy,I.InventoryDate) AS InventoryDate, I.Count AS InventoryCount
+  FROM vProducts AS P
+  INNER JOIN vInventories AS I ON
+  P.ProductID = I.ProductID
+  ORDER BY P.ProductName, CAST(InventoryDate AS DATE), I.Count;
 GO
 
 -- Question 4 (10% of pts): How can you CREATE A VIEW called vProductInventories 
@@ -308,7 +318,7 @@ SELECT P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.Inv
   P.ProductID = I.ProductID
   ORDER BY P.ProductName, I.InventoryDate, I.Count;
 GO
-*/
+
 
 --Our order by matches, and the formatting request is also the same. So, all we must do is nest this into a view. Note we must also add TOP to the select
 --in order for the the view to work properly due to the presence of an ORDER BY
@@ -319,6 +329,17 @@ CREATE  --DROP
       INNER JOIN vInventories AS I ON
       P.ProductID = I.ProductID
       ORDER BY P.ProductName, I.InventoryDate, I.Count;
+GO
+*/
+
+--Here is final version using the updated select statement and updated order by to use CAST
+CREATE  --DROP
+  VIEW vProductInventories AS
+    SELECT TOP 100000 P.ProductName, DATENAME(mm,I.InventoryDate) + ', ' + DATENAME(yy,I.InventoryDate) AS InventoryDate, I.Count AS InventoryCount
+      FROM vProducts AS P
+      INNER JOIN vInventories AS I ON
+      P.ProductID = I.ProductID
+      ORDER BY P.ProductName, CAST(InventoryDate AS DATE), I.Count;
 GO
 
 -- Check that it works: Select * From vProductInventories;
@@ -370,7 +391,7 @@ SELECT C.CategoryName, DATENAME(mm,I.InventoryDate) + ', ' + LTRIM(STR(YEAR(I.In
   GROUP BY C.CategoryName, InventoryDate
   ORDER BY C.CategoryName, I.InventoryDate, InventoryCountByCategory;
 GO
-*/
+
 
 --Finally, now that we have our select statement, we can nest it into a view
 CREATE  --DROP
@@ -383,6 +404,20 @@ CREATE  --DROP
       P.ProductID = I.ProductID
       GROUP BY C.CategoryName, InventoryDate
       ORDER BY C.CategoryName, I.InventoryDate, InventoryCountByCategory;
+GO
+*/
+
+--Here is final version using the new select statement and order by logic
+CREATE  --DROP
+  VIEW vCategoryInventories AS
+    SELECT TOP 1000000 C.CategoryName, DATENAME(mm,I.InventoryDate) + ', ' + DATENAME(yy,I.InventoryDate) AS InventoryDate, SUM(I.Count) AS InventoryCountByCategory
+      FROM vCategories AS C
+      INNER JOIN vProducts AS P ON
+      C.CategoryID = P.CategoryID
+      INNER JOIN vInventories AS I ON
+      P.ProductID = I.ProductID
+      GROUP BY C.CategoryName, InventoryDate
+      ORDER BY C.CategoryName, CAST(InventoryDate AS DATE), InventoryCountByCategory;
 GO
 
 -- Check that it works: Select * From vCategoryInventories;
@@ -493,10 +528,9 @@ SELECT
     MONTH(X.InventoryDate),
 	X.InventoryCount;
 GO
-*/
 
---Finally, we put this code into a view. NOTE THAT IN LATER PROBLEMS, I HAVE TWEAKED MY ORDER BY TO MATCH THE NEWER ELEGANT
---FORMAT. THE OLD ONE WORKS HOWEVER
+
+--Finally, we put this code into a view. 
 CREATE --DROP
   VIEW vProductInventoriesWithPreviousMonthCounts
   AS
@@ -515,6 +549,27 @@ CREATE --DROP
       X.ProductName,
 	  YEAR(X.InventoryDate),
       MONTH(X.InventoryDate),
+	  X.InventoryCount;
+GO
+*/
+
+--Final adjustments using the new CAST logic for Order By 
+CREATE --DROP
+  VIEW vProductInventoriesWithPreviousMonthCounts
+  AS
+    SELECT TOP 1000000
+    X.ProductName,
+    X.InventoryDate,
+    X.InventoryCount,
+    IIF(X.InventoryDate = 'January, 2017',0,LAG(X.InventoryCount) OVER --This eliminates any nulls as well
+    (ORDER BY 
+      X.ProductName,
+      CAST(X.InventoryDate AS DATE)))
+  	AS PreviousMonthCount
+    FROM vProductInventories AS X
+    ORDER BY
+      X.ProductName,
+      CAST(X.InventoryDate AS DATE),
 	  X.InventoryCount;
 GO
 
@@ -585,8 +640,7 @@ CREATE --DROP
     FROM vProductInventoriesWithPreviousMonthCounts AS X
     ORDER BY
       X.ProductName,
-	  YEAR(X.InventoryDate),
-      MONTH(X.InventoryDate),
+      CAST(X.InventoryDate AS DATE),
 	  X.InventoryCount;
 GO
 
@@ -636,8 +690,7 @@ CREATE FUNCTION fProductInventoriesWithPreviousMonthCountsWithKPIs (
 	WHERE CountVsPreviousCountKPI = @KPI_IND  --only where provided integer is equal to the KPI
 	ORDER BY 
 	  v1.ProductName,
-	  YEAR(v1.InventoryDate),
-      MONTH(v1.InventoryDate),
+      CAST(v1.InventoryDate AS DATE),
 	  v1.InventoryCount
 	);
 GO
